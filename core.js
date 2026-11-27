@@ -63,8 +63,9 @@ export function plannerSections(catalog, prompts, limit, modules) {
     const escape=value=>String(value || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
     const containers=(tag,field)=>effective.length?`<${tag}>\n${effective.map((m,i)=>`<module id="${i+1}" name="${escape(m.name)}">\n${escape(m[field])}\n</module>`).join('\n')}\n</${tag}>`:'';
     const analysis=effective.length?[prompts.analysisDispatch ?? DEFAULT_PROMPTS.analysisDispatch,containers('analysis_modules','analysis')].filter(Boolean).join('\n\n'):'';
-    const formats=effective.length?[prompts.analysisFormatIntro ?? DEFAULT_PROMPTS.analysisFormatIntro,containers('analysis_module_formats','outputFormat')].filter(Boolean).join('\n\n'):'';
-    const contents=[prompts.task, [reasoningBefore,list('reasoning'),prompts.reasoningAfter,prompts.sparkBefore,list('spark'),prompts.sparkAfter].filter(Boolean).join('\n\n'), analysis, prompts.protocol,
+    const formatModules=effective;
+    const formats=effective.length?[prompts.analysisFormatIntro ?? DEFAULT_PROMPTS.analysisFormatIntro,`<analysis_module_formats>\n${formatModules.map((m,i)=>`<module id="${i+1}" name="${escape(m.name)}">\n${escape(m.outputFormat)}\n</module>`).join('\n')}\n</analysis_module_formats>`].filter(Boolean).join('\n\n'):'';
+    const contents=[prompts.task, [reasoningBefore,list('reasoning'),prompts.reasoningAfter,prompts.sparkBefore,list('spark'),prompts.sparkAfter].filter(Boolean).join('\n\n'), analysis, [prompts.protocol,GUIDANCE_PROTOCOL].filter(Boolean).join('\n\n'),
         [prompts.selectionFormat ?? DEFAULT_PROMPTS.selectionFormat,formats].filter(Boolean).join('\n\n')];
     const definitions=[['task','总任务','全局任务说明'],['catalog','Reasoning Skill / 火花目录','全局目录说明与本轮冻结候选目录'],['analysis','分析模块指导','全局调度说明与本轮适用模块分析资料（按用户排序）'],['protocol','输出总协议','全局输出协议'],['format','具体输出格式','选择标记、分析模块输出总起与本轮适用模块格式']];
     return definitions.map(([id,title,source],i)=>({id,title,source,order:i+1,enabled:!!contents[i],content:contents[i] || ''}));
@@ -72,6 +73,27 @@ export function plannerSections(catalog, prompts, limit, modules) {
 
 export function plannerPrompt(catalog, prompts, limit, modules) {
     return plannerSections(catalog,prompts,limit,modules).map(s=>s.content).filter(Boolean).join('\n\n');
+}
+
+export const GUIDANCE_PROTOCOL = '将实际交付给 Generation 的创作指导放入完整的 <guidance>...</guidance> 标签中。可以输出多个独立标签块，按出现顺序交付。只有标签内部的内容会交付；标签外的分析、选材理由、候选与筛选过程不会注入。没有完整有效标签时不交付分析内容。Reasoning Skill 与火花仍按选择标记选用。';
+// Legacy field values remain import/export data only; they never control delivery.
+export function analysisOutputProtocol(module) { return module.outputFormat || ''; }
+
+// Text protocol only: exact, balanced tags; nested/malformed tags invalidate their block.
+export function extractGuidance(text) {
+    const chunks=[]; let start=-1,depth=0,valid=true;
+    for(const token of String(text).matchAll(/<\/?guidance\b[^>]*>/g)) {
+        const closing=token[0].startsWith('</');
+        if(!closing) {
+            if(!depth){start=token.index+token[0].length;valid=token[0]==='<guidance>';}
+            else valid=false;
+            depth++;
+        } else if(depth) {
+            if(token[0]!=='</guidance>')valid=false;
+            if(!--depth && valid){const body=text.slice(start,token.index).trim();if(body)chunks.push(body);}
+        }
+    }
+    return chunks.join('\n\n');
 }
 
 export function parsePlanner(raw, catalog, limit = 5, modules) {
@@ -82,7 +104,7 @@ export function parsePlanner(raw, catalog, limit = 5, modules) {
     const labels = new Set([...raw.matchAll(pattern)].map(m => /^spark$/i.test(m[1]) ? 'spark' : 'reasoning'));
     for(const type of ['reasoning','spark']) if(!labels.has(type)) warnings.push(`缺少 ${type} 选择标记，按空选择处理`);
     const finals=new Set([...raw.matchAll(new RegExp(`最终选择\\s*[:：]\\s*${pattern.source}`,'gi'))].map(m=>/^spark$/i.test(m[1])?'spark':'reasoning'));
-    const cleaned = raw.replace(pattern, (_, label, values, offset) => {
+    raw.replace(pattern, (_, label, values, offset) => {
         const type = /^spark$/i.test(label) ? 'spark' : 'reasoning';
         if(finals.has(type) && !/最终选择\s*[:：]\s*$/.test(raw.slice(Math.max(0,offset-24),offset))) return '';
         const cap = type === 'spark' ? 3 : limit;
@@ -95,22 +117,9 @@ export function parsePlanner(raw, catalog, limit = 5, modules) {
         }
         return '';
     }).trim();
-    const section = /(?:^|\n)\s*(?:#{1,6}\s*)?(?:三[、.．]\s*心理发现|【心理发现】)\s*[:：]?\s*/m.exec(cleaned);
-    let discovery = section ? cleaned.slice(section.index + section[0].length).trim() : cleaned;
-    if (modules) {
-        // Ordinary headings identify results; unknown/free-form output remains intact.
-        const lines=cleaned.split('\n'), boundaries=[];
-        for (const [index,line] of lines.entries()) {
-            const title=line.trim().replace(/^#{1,6}\s*/, '').replace(/^(?:[一二三四五六七八九十百]+[、.．]|\d+[、.．)）])\s*/, '').replace(/^【(.*)】$/, '$1').replace(/[:：]$/, '').trim();
-            if(modules.some(m=>m.name===title))boundaries.push(index);
-        }
-        if(boundaries.length) discovery=boundaries.map((start,i)=>{
-            const chunk=lines.slice(start,boundaries[i+1] ?? lines.length), body=chunk.slice(1).join('\n').trim();
-            return !body || /^(?:无|（无）|\(无\))[。.!！]?$/u.test(body)?'':chunk.join('\n').trim();
-        }).filter(Boolean).join('\n\n');
-        else if(/^(?:无|（无）|\(无\))[。.!！]?$/u.test(discovery))discovery='';
-    }
-    return { selected, discovery, warnings };
+    const discovery=extractGuidance(raw);
+    if(!discovery)warnings.push('未检测到有效 guidance 标签，分析内容未注入。');
+    return { selected, discovery, warnings, guidanceProtocol:1,guidanceMissing:!discovery, moduleOutputs:[] };
 }
 
 export function currentTurn(chat) {

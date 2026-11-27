@@ -11,7 +11,13 @@ async function post(context, path, body, signal) {
     if(!response.ok) throw new Error(`酒馆请求失败 (${response.status})`);
     return response.status === 204 ? null : response.json();
 }
-export async function saveChannelKey(context, channel, key) {
+let vaultQueue=Promise.resolve();
+// Serialise our writes: every write temporarily activates the new Custom key.
+export function saveChannelKey(context, channel, key) {
+    const pending=vaultQueue.then(()=>writeChannelKey(context,channel,key));
+    vaultQueue=pending.catch(()=>{});return pending;
+}
+async function writeChannelKey(context, channel, key) {
     if(!key) return channel;
     const state = await post(context,'/api/secrets/read',{});
     let active = state[SECRET]?.find(s=>s.active)?.id;
@@ -25,12 +31,16 @@ export async function saveChannelKey(context, channel, key) {
         const secrets=await import('/scripts/secrets.js'); await secrets.readSecretState();
     }
 }
+export async function removeChannelKey(context,id) {
+    if(id)await post(context,'/api/secrets/delete',{key:SECRET,id});
+}
 export async function models(context, channel, signal) {
     checkChannel(channel);
     const result=await post(context,'/api/backends/chat-completions/status',{chat_completion_source:'custom',custom_url:channelUrl(channel.url),secret_id:channel.secretId || '__spark_no_key__'},signal);
-    const entries=Array.isArray(result.data)?result.data:Array.isArray(result.models)?result.models:[];
-    if(result.error || !entries.length) throw new Error('未取得模型列表，可手工填写模型名');
-    return entries.map(x=>typeof x==='string'?x:x.id).filter(Boolean);
+    if(result?.error)throw new Error('模型列表请求失败，请检查地址、认证和接口支持情况；可手动输入模型 ID');
+    const entries=Array.isArray(result?.data)?result.data:Array.isArray(result?.models)?result.models:null;
+    if(!entries)throw new Error('模型列表格式不兼容，可手动输入模型 ID');
+    return [...new Set(entries.map(x=>typeof x==='string'?x:x?.id).filter(x=>typeof x==='string' && x.trim()))];
 }
 export async function inheritedPlanner(context,settings,prompt,signal,inspect) {
     const c=context();

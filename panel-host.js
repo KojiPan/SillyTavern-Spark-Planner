@@ -9,12 +9,11 @@ export function createPanelHost(panel, context, beforeOpen) {
         if (!popup) return;
         const viewport = window.visualViewport;
         const center = document.querySelector('#sheld')?.getBoundingClientRect();
-        const top = Math.max((viewport?.offsetTop || 0) + 8, center?.top || 0);
-        const bottom = Math.min((viewport?.offsetTop || 0) + (viewport?.height || innerHeight), document.querySelector('#form_sheld')?.getBoundingClientRect().top || innerHeight - 64) - 8;
+        const height = (viewport?.height || innerHeight) * .9;
+        const top = (viewport?.offsetTop || 0) + (viewport?.height || innerHeight) * .05;
         popup.dlg.style.setProperty('--spark-panel-top', `${top}px`);
-        popup.dlg.style.setProperty('--spark-panel-bottom', `${Math.max(8, innerHeight - bottom)}px`);
-        popup.dlg.style.setProperty('--spark-panel-height', `${Math.max(80, (bottom - top) * .7)}px`);
-        const width = Math.min(center?.width || innerWidth, innerWidth);
+        popup.dlg.style.setProperty('--spark-panel-height', `${height}px`);
+        const width = Math.min(center?.width || innerWidth, viewport?.width || innerWidth);
         popup.dlg.style.setProperty('--spark-panel-width', `${width}px`);
         popup.dlg.style.setProperty('--spark-panel-left', `${Math.max(0, Math.min(center?.left || 0, innerWidth - width))}px`);
     };

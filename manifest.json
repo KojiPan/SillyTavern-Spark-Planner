@@ -6,7 +6,7 @@
   "js": "index.js",
   "css": "style.css",
   "author": "Spark Planner contributors",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "minimum_client_version": "1.18.0",
   "generate_interceptor": "sparkPlannerIntercept"
 }

@@ -63,5 +63,5 @@ export function inspectPlannerRequest(messages, settings, inspect = () => {}, da
         mode: settings.contextMode || 'native', plannerModelId:typeof data.model==='string'?data.model:null,
         messages: structuredClone(messages), latestRole: messages.at(-1).role, parameters,
         transportNotes:data.custom_include_body || data.custom_exclude_body ? ['存在额外请求体或排除参数配置；内容未保存，其中的服务端处理可能改变供应商最终请求。'] : [] };
-    inspect(snapshot);
+    inspect(snapshot,data);
 }

@@ -31,7 +31,7 @@ export async function showRequest(context,record,notify=()=>{}) {
         body.tabIndex=0;body.setAttribute('aria-label','请求阅读区');
         if(!request){body.append(el('p','此记录未保存实际请求'));return;}
         const meta=el('div',undefined,'spark-request-meta');
-        meta.append(el('p',`${request.mode==='standalone'?'独立默认预设':'沿用酒馆预设'} · 浏览器→酒馆 · ${(request.messages || []).length} 条消息 · ${requestCharacters(request).toLocaleString()} 字符`),
+        meta.append(el('p',`${request.mode==='standalone'?'独立默认预设':'沿用酒馆预设'} · 浏览器→酒馆 · ${(request.messages || []).length} 条消息`),
             el('p',`Planner：${request.plannerModelId || '未知'} · Generation：${request.generationModelId || '未知'}`));
         if(record.error)meta.append(el('p',`失败原因：${record.error}`,'spark-editor-error'));
         const toolbar=el('div',undefined,'spark-request-toolbar');
@@ -42,7 +42,7 @@ export async function showRequest(context,record,notify=()=>{}) {
         body.before(meta,toolbar,tabs);
         function part(title,content,source,key) {
             const details=el('details',undefined,'spark-request-part');details.dataset.requestPart=key;
-            details.append(el('summary',`${title} · ${content.length.toLocaleString()} 字符`));
+            details.append(el('summary',title));
             // Long text grows within the dialog's one scroll area. Messages remain collapsed.
             let rendered=false;
             details.addEventListener('toggle',()=>{

@@ -4,6 +4,7 @@ import { ecotEntry } from './ecot.js';
 import { versionsOf } from './model-versions.js';
 import { migratePacks, validatePack } from './packs.js';
 import { legacyAnalysisModules, validateAnalysisModule } from './analysis-modules.js';
+const writes = new Map();
 
 export class Worldbook {
     constructor(context, settings) { this.context = context; this.settings = settings; }
@@ -14,6 +15,7 @@ export class Worldbook {
     async read() {
         const name = this.settings().world;
         if (!name) throw new Error('请先绑定或创建世界书。');
+        if(this.context().getWorldInfoNames && !this.context().getWorldInfoNames().includes(name))throw new Error('绑定世界书不存在或无法读取。');
         const data = await this.context().loadWorldInfo(name);
         if (!data?.entries) throw new Error('绑定世界书不存在或无法读取。');
         return { name, data: structuredClone(data) };
@@ -48,7 +50,11 @@ export class Worldbook {
             await this.context().eventSource.emit(this.context().eventTypes.WORLDINFO_UPDATED, name, structuredClone(data));
             return result;
         };
-        return navigator.locks ? navigator.locks.request(`spark-world:${name}`, transaction) : transaction();
+        if (navigator.locks) return navigator.locks.request(`spark-world:${name}`, transaction);
+        // Serialize this page's edits even on hosts without the Web Locks API.
+        const pending=(writes.get(name) || Promise.resolve()).catch(()=>{}).then(transaction);
+        writes.set(name,pending);
+        try{return await pending;}finally{if(writes.get(name)===pending)writes.delete(name);}
     }
     async entries() {
         await this.packState();
@@ -73,6 +79,7 @@ export class Worldbook {
         if (this.context().getWorldInfoNames().includes(name)) throw new Error('同名世界书已存在，请直接绑定。');
         if (!await api.createNewWorldInfo(name)) throw new Error('创建世界书失败。');
         this.settings().world = name;
+        this.settings().discoveryId = '';
         this.context().saveSettingsDebounced();
         await this.ensureDiscovery();
     }
@@ -105,7 +112,7 @@ export class Worldbook {
         const { name, data } = await this.read(), api = await this.api();
         const original = JSON.stringify(data);
         this.syncEcotEntries(data, api, name);
-        if (JSON.stringify(data) !== original) await this.mutate(latest => this.syncEcotEntries(latest, api, name), original, name);
+        if (JSON.stringify(data) !== original) await this.mutate(latest => this.syncEcotEntries(latest, api, name), undefined, name);
     }
     async upsert(input, expected) {
         const skill = validateSkill(input);

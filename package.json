@@ -1,0 +1,23 @@
+{
+  "name": "sillytavern-spark-planner",
+  "version": "0.8.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node scripts/check.mjs",
+    "package": "node scripts/package.mjs",
+    "check:package": "node scripts/verify-package.mjs",
+    "test:ux02": "node tests/ux02.e2e.mjs",
+    "test:ux03": "node tests/ux03.e2e.mjs",
+    "test:round": "node tests/round-control.e2e.mjs",
+    "test:guidance": "node tests/guidance-preview.e2e.mjs",
+    "test:assets": "node tests/creative-assets-p2.e2e.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3"
+  }
+}
